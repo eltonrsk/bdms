@@ -39,8 +39,9 @@ export function AdminHospitals() {
     setSaving(true);
     setSubmitError(null);
 
+    const { password, ...restFormData } = formData;
     const hospitalData = {
-      ...formData,
+      ...restFormData,
       latitude: formData.latitude ? parseFloat(formData.latitude) : null,
       longitude: formData.longitude ? parseFloat(formData.longitude) : null,
     };
