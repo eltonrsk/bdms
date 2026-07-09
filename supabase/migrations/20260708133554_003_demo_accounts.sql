@@ -17,16 +17,50 @@ Both accounts are linked to hospitals in the system.
 -- Create a trigger function to auto-create user profiles with correct role
 CREATE OR REPLACE FUNCTION handle_new_user_with_profile()
 RETURNS TRIGGER AS $$
+DECLARE
+  user_role text;
+  hospital_id uuid;
 BEGIN
-  -- Default role is donor
-  INSERT INTO public.user_profiles (id, role)
-  VALUES (NEW.id, 'donor');
+  -- Determine role based on email
+  user_role := CASE
+    WHEN NEW.email = 'admin@bloodbank.org' THEN 'admin'
+    WHEN NEW.email = 'hospital@bloodbank.org' THEN 'hospital'
+    WHEN NEW.email = 'donor@bloodbank.org' THEN 'donor'
+    ELSE 'donor'  -- Default to donor for new signups
+  END;
+  
+  -- Assign hospital_id for known hospital emails
+  hospital_id := CASE
+    WHEN NEW.email = 'hospital@bloodbank.org' THEN 'a1111111-1111-1111-1111-111111111111'
+    ELSE NULL
+  END;
+  
+  INSERT INTO public.user_profiles (id, role, hospital_id, donor_id)
+  VALUES (NEW.id, user_role, hospital_id, CASE WHEN user_role = 'donor' THEN NEW.id ELSE NULL END)
+  ON CONFLICT (id) DO NOTHING;
+  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- For existing users, we can update their profiles
--- Note: In production, you would create these users through Supabase Auth
+-- Drop and recreate the trigger to ensure it's attached
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user_with_profile();
 
--- Insert a note about demo accounts
-COMMENT ON TABLE user_profiles IS 'User profiles with role-based access. Demo accounts can be created by signing up with admin@bloodbank.org or hospital@bloodbank.org and then updating the role manually.';
+-- Update existing demo account user profiles to have the correct roles
+UPDATE user_profiles up
+SET role = CASE
+  WHEN u.email = 'admin@bloodbank.org' THEN 'admin'
+  WHEN u.email = 'hospital@bloodbank.org' THEN 'hospital'
+  WHEN u.email = 'donor@bloodbank.org' THEN 'donor'
+  ELSE role
+END,
+hospital_id = CASE
+  WHEN u.email = 'hospital@bloodbank.org' THEN 'a1111111-1111-1111-1111-111111111111'
+  ELSE hospital_id
+END
+FROM auth.users u
+WHERE up.id = u.id
+AND u.email IN ('admin@bloodbank.org', 'hospital@bloodbank.org', 'donor@bloodbank.org');

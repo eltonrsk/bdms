@@ -18,6 +18,7 @@ export function AdminHospitals() {
     phone: '',
     email: '',
     contact_person: '',
+    password: '',
     latitude: '',
     longitude: '',
   });
@@ -44,29 +45,40 @@ export function AdminHospitals() {
       longitude: formData.longitude ? parseFloat(formData.longitude) : null,
     };
 
-    let data;
-    let error;
+    try {
+      if (editingHospital) {
+        await supabase.from('hospitals').update(hospitalData).eq('id', editingHospital.id).select();
+      } else {
+        // call server-side function to create hospital and auth user
+        const payload = {
+          hospital: hospitalData,
+          email: formData.email,
+          password: formData.password || undefined,
+        } as any;
 
-    if (editingHospital) {
-      ({ data, error } = await supabase
-        .from('hospitals')
-        .update(hospitalData)
-        .eq('id', editingHospital.id)
-        .select());
-    } else {
-      ({ data, error } = await supabase.from('hospitals').insert(hospitalData).select());
+        const fnRes = await supabase.functions.invoke('create-hospital', {
+          body: JSON.stringify(payload),
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (fnRes.error) {
+          setSubmitError(fnRes.error.message || 'Failed to create hospital');
+          console.error('Create hospital function error:', fnRes.error);
+          setSaving(false);
+          return;
+        }
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || String(err));
+      console.error('Hospital save error:', err);
+      setSaving(false);
+      return;
     }
 
-    if (!error) {
-      await fetchHospitals();
-      setShowModal(false);
-      setEditingHospital(null);
-      resetForm();
-    } else {
-      setSubmitError(error.message);
-      console.error('Hospital save error:', error);
-    }
-
+    await fetchHospitals();
+    setShowModal(false);
+    setEditingHospital(null);
+    resetForm();
     setSaving(false);
   };
 
@@ -88,6 +100,7 @@ export function AdminHospitals() {
       phone: '',
       email: '',
       contact_person: '',
+      password: '',
       latitude: '',
       longitude: '',
     });
@@ -104,6 +117,7 @@ export function AdminHospitals() {
       phone: hospital.phone,
       email: hospital.email,
       contact_person: hospital.contact_person,
+      password: '',
       latitude: hospital.latitude?.toString() || '',
       longitude: hospital.longitude?.toString() || '',
     });
@@ -294,6 +308,18 @@ export function AdminHospitals() {
                   />
                 </div>
               </div>
+              {!editingHospital && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Initial Password</label>
+                  <input
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 outline-none"
+                    placeholder="Set an initial password or leave blank to auto-generate"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Contact Person</label>
                 <input
